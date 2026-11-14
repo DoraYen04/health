@@ -254,18 +254,37 @@ async function nutrition() {
 // 資料管理（修正、補登）
 // ---------------------------------------------------------------------------
 
+// 資料管理的查詢區間：存在瀏覽器，重新整理或下次開啟時沿用。
+// 結束日若當時是「今天」，記成 today，之後開啟會自動換成當天日期。
+const RANGE_KEY = 'rec-range';
+function loadRange() {
+  const def = { from: addDays(me.today, -29), to: me.today };
+  try {
+    const r = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
+    const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+    if (!r || !ok(r.from)) return def;
+    const to = r.to === 'today' || !ok(r.to) ? me.today : r.to;
+    return { from: r.from, to };
+  } catch { return def; }
+}
+function saveRange(from, to) {
+  try { localStorage.setItem(RANGE_KEY, JSON.stringify({ from, to: to === me.today ? 'today' : to })); } catch { /* ignore */ }
+}
+
 async function records() {
   const sheets = Object.keys(SHEET_VIEWS);
   let sheet = sessionStorage.getItem('rec-sheet') || 'Weight_Log';
+  const range = loadRange();
   $view.innerHTML = `
     <h2>資料管理</h2>
     <div class="toolbar" id="sheet-pick">${sheets.map((s) => `<button class="seg ${s === sheet ? 'on' : ''}" data-s="${s}">${SHEET_VIEWS[s].title}</button>`).join('')}</div>
-    <div class="toolbar"><input type="date" id="r-from" value="${addDays(me.today, -29)}"> ～ <input type="date" id="r-to" value="${me.today}"> <button id="r-go">查詢</button></div>
+    <div class="toolbar"><input type="date" id="r-from" value="${range.from}"> ～ <input type="date" id="r-to" value="${range.to}"> <button id="r-go">查詢</button> <button id="r-reset" title="回到最近 30 天">最近 30 天</button></div>
     <div class="card"><h3>新增／補登</h3><div id="r-add"></div></div>
     <div class="card"><div id="r-table"></div></div>`;
   const load = async () => {
     const from = document.getElementById('r-from').value;
     const to = document.getElementById('r-to').value;
+    saveRange(from, to);
     const dateKey = SHEET_VIEWS[sheet].cols[0][0];
     const addBox = document.getElementById('r-add');
     renderAddForm(addBox, sheet, { [dateKey]: me.today }, load);
@@ -287,6 +306,11 @@ async function records() {
     load().catch((err) => toast(err.message, true));
   };
   document.getElementById('r-go').onclick = () => load().catch((err) => toast(err.message, true));
+  document.getElementById('r-reset').onclick = () => {
+    document.getElementById('r-from').value = addDays(me.today, -29);
+    document.getElementById('r-to').value = me.today;
+    load().catch((err) => toast(err.message, true));
+  };
   await load();
 }
 
