@@ -78,8 +78,33 @@ test('飲食：AI 無法使用時仍可記錄食物名稱', async () => {
   assert.equal(meals[0].calorie_kcal, null);
 });
 
-test('排程：首次提醒 → 補提醒一次 → 完成後不再提醒', async () => {
+const enableTask = async (taskType, patch = {}) => {
+  const [t] = await getStore().list('Task_Schedule', (r) => r.task_type === taskType);
+  await getStore().update('Task_Schedule', t.task_id, { enabled: true, ...patch });
+};
+
+test('預設排程：只啟用上午／下午體重與施打，且不補提醒', async () => {
   await handleEvent({ type: 'follow', replyToken: 'r', source: { userId: U } });
+  const tasks = await getStore().list('Task_Schedule');
+  const enabled = tasks.filter((t) => t.enabled === true).map((t) => t.task_type).sort();
+  assert.deepEqual(enabled, ['injection', 'weight_am', 'weight_pm']);
+  assert.ok(tasks.every((t) => t.repeat_enabled === false));
+
+  // 2026-11-09 是週一：08:00、14:00 體重、20:00 施打各提醒一次，之後不再補提醒
+  for (const iso of ['00:01', '00:45', '06:01', '06:45', '12:01', '13:30', '13:59']) {
+    await runTick(new Date(`2026-11-09T${iso}:00Z`));
+  }
+  const logs = await getStore().list('Reminder_Log');
+  assert.equal(logs.length, 3);
+  assert.ok(logs.every((l) => l.reminder_type === '首次'));
+  // 21:00 後不推播每日報告
+  assert.equal((await getStore().list('Report_Log')).length, 0);
+  assert.equal(sent.filter((s) => s.url.endsWith('/push') && /每日報告/.test(s.body.messages[0].text)).length, 0);
+});
+
+test('排程（啟用補提醒時）：首次提醒 → 補提醒一次 → 完成後不再提醒', async () => {
+  await handleEvent({ type: 'follow', replyToken: 'r', source: { userId: U } });
+  await enableTask('weight_am', { repeat_enabled: true, repeat_minutes: 30 });
   // 08:00 台北 = 00:00 UTC
   await runTick(new Date('2026-11-09T00:01:00Z'));
   let logs = await getStore().list('Reminder_Log');
@@ -102,8 +127,9 @@ test('排程：首次提醒 → 補提醒一次 → 完成後不再提醒', asyn
   assert.ok(logs.every((l) => l.status === '已完成'));
 });
 
-test('排程：每日報告 21:00 只送一次', async () => {
+test('排程（啟用每日報告時）：21:00 只送一次', async () => {
   await handleEvent({ type: 'follow', replyToken: 'r', source: { userId: U } });
+  await enableTask('daily_report');
   await runTick(new Date('2026-11-09T13:01:00Z'));
   await runTick(new Date('2026-11-09T13:06:00Z'));
   const reports = await getStore().list('Report_Log', { report_type: 'Daily' });

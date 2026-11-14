@@ -326,7 +326,7 @@ async function tasks() {
   };
   document.getElementById('t-add').onclick = () => {
     document.getElementById('task-body').insertAdjacentHTML('beforeend', rowHtml({
-      task_id: '', task_name: '', task_type: 'custom', frequency: '每日', remind_time: '09:00', repeat_enabled: true, repeat_minutes: 30, overdue_minutes: 180, enabled: true,
+      task_id: '', task_name: '', task_type: 'custom', frequency: '每日', remind_time: '09:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 180, enabled: true,
     }).replace('data-id=""', ''));
   };
 }

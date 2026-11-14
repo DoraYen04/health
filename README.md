@@ -83,7 +83,7 @@ gcloud scheduler jobs create http health-tick --location asia-east1 \
 
 node --env-file=.env scripts/setup-rich-menu.js        # 上傳 assets/rich-menu.png 並設為預設選單
 ```
-最後在 LINE 加入官方帳號好友 → 系統自動建立 Settings 與 7 項預設排程 → 用 Google 登入 Dashboard（第一次登入會自動綁定唯一的 LINE 使用者）。
+最後在 LINE 加入官方帳號好友 → 系統自動建立 Settings 與預設排程（只啟用上午／下午體重、每週一施打提醒，各提醒一次、不補提醒；體脂測量與日／週／月報告預設停用，可在 Dashboard 啟用） → 用 Google 登入 Dashboard（第一次登入會自動綁定唯一的 LINE 使用者）。
 
 ## LINE 指令
 
@@ -120,6 +120,6 @@ node --env-file=.env scripts/setup-rich-menu.js        # 上傳 assets/rich-menu
 | 施打提醒 | 預設建立但**停用**，請依醫囑在 Dashboard 設定星期與時間後啟用 |
 
 ## 注意事項
-- **LINE 訊息額度**：回覆（reply）免費，推播（push）計入每月額度。每日 2 次體重提醒＋補提醒＋每日報告，一個月約 100–150 則，請確認方案額度；可在 Dashboard 停用不需要的補提醒。
+- **LINE 訊息額度**：回覆（reply）免費，推播（push）計入每月額度。預設每日 2 次體重提醒＋每週 1 次施打提醒，一個月約 65 則；在 Dashboard 啟用補提醒或報告推播會增加則數。
 - **Sheets 效能**：讀取有 4 秒快取、更新採 batchUpdate。資料量大或多人使用時，`database/sheets-service.js` 介面可替換為 PostgreSQL 實作。
 - 系統是紀錄與一般資訊輔助工具，不提供藥物劑量或施打頻率建議，不替代醫師診療。

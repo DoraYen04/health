@@ -66,7 +66,7 @@ export async function handleEvent(event) {
     if (event.type === 'follow') {
       const profile = await lineClient.getProfile(userId).catch(() => null);
       await ensureUser(userId, profile?.displayName || '');
-      await respond([`歡迎使用健康管理小助理${profile?.displayName ? `，${profile.displayName}` : ''}！已為您建立預設提醒（上午 08:00、下午 14:00 量體重，21:00 每日報告），可於 Dashboard 調整。`, HELP]);
+      await respond([`歡迎使用健康管理小助理${profile?.displayName ? `，${profile.displayName}` : ''}！已為您建立預設提醒（上午 08:00、下午 14:00 量體重，每週一 20:00 施打紀錄），可於 Dashboard 調整。`, HELP]);
       return;
     }
     await ensureUser(userId);

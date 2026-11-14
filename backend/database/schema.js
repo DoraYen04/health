@@ -118,15 +118,17 @@ export const DEFAULT_SETTINGS = {
   report_ai_enabled: true,
 };
 
-// 新使用者預設作業排程（皆可於 Dashboard 修改／停用）
+// 新使用者預設作業排程（皆可於 Dashboard 修改／啟用／停用）
+// 預設只提醒：上午體重、下午體重、每週施打，各提醒一次、不補提醒。
+// 體脂測量與日／週／月報告預設停用（LINE 輸入「今日報告」等仍可隨時查詢）。
 export const DEFAULT_TASKS = [
-  { task_name: '上午體重', task_type: 'weight_am', frequency: '每日', remind_time: '08:00', repeat_enabled: true, repeat_minutes: 30, overdue_minutes: 180, required_input: '數值', message: '早安！今天記得測量體重喔！請輸入目前體重（kg），例如 59.8。' },
-  { task_name: '下午體重', task_type: 'weight_pm', frequency: '每日', remind_time: '14:00', repeat_enabled: true, repeat_minutes: 30, overdue_minutes: 180, required_input: '數值', message: '請測量並輸入下午體重（kg）。' },
-  { task_name: '每日報告', task_type: 'daily_report', frequency: '每日', remind_time: '21:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '' },
-  { task_name: '施打紀錄', task_type: 'injection', frequency: '每週', weekday: 1, remind_time: '20:00', repeat_enabled: true, repeat_minutes: 60, overdue_minutes: 240, required_input: '劑量', message: '本週固定作業提醒：請依醫囑確認是否為施打日。若已施打，請輸入「施打 劑量」，例如：施打 2.5mg。', enabled: false },
-  { task_name: '體脂測量', task_type: 'body_composition', frequency: '每週', weekday: 0, remind_time: '09:00', repeat_enabled: true, repeat_minutes: 30, overdue_minutes: 600, required_input: '照片', message: '今天是體脂測量日，請上傳體脂計測量照片。' },
-  { task_name: '每週報告', task_type: 'weekly_report', frequency: '每週', weekday: 0, remind_time: '20:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '' },
-  { task_name: '每月報告', task_type: 'monthly_report', frequency: '每月', day_of_month: 'last', remind_time: '20:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '' },
+  { task_name: '上午體重', task_type: 'weight_am', frequency: '每日', remind_time: '08:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 180, required_input: '數值', message: '早安！今天記得測量體重喔！請輸入目前體重（kg），例如 59.8。' },
+  { task_name: '下午體重', task_type: 'weight_pm', frequency: '每日', remind_time: '14:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 180, required_input: '數值', message: '請測量並輸入下午體重（kg）。' },
+  { task_name: '施打紀錄', task_type: 'injection', frequency: '每週', weekday: 1, remind_time: '20:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 240, required_input: '劑量', message: '本週固定作業提醒：請依醫囑確認是否為施打日。若已施打，請輸入「施打 劑量」，例如：施打 2.5mg。' },
+  { task_name: '每日報告', task_type: 'daily_report', frequency: '每日', remind_time: '21:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '', enabled: false },
+  { task_name: '體脂測量', task_type: 'body_composition', frequency: '每週', weekday: 0, remind_time: '09:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 600, required_input: '照片', message: '今天是體脂測量日，請上傳體脂計測量照片。', enabled: false },
+  { task_name: '每週報告', task_type: 'weekly_report', frequency: '每週', weekday: 0, remind_time: '20:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '', enabled: false },
+  { task_name: '每月報告', task_type: 'monthly_report', frequency: '每月', day_of_month: 'last', remind_time: '20:00', repeat_enabled: false, repeat_minutes: 0, overdue_minutes: 0, required_input: '', message: '', enabled: false },
 ];
 
 export const TASK_TYPES = {
