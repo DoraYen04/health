@@ -2,6 +2,8 @@
 // 圖片由 scripts/make-rich-menu-image.py 產生（assets/rich-menu.png），
 // 執行 npm run setup:richmenu 上傳並設為預設選單。
 
+import { dashboardUrl } from '../../config/settings.js';
+
 const W = 2500;
 const H = 1686;
 const COLS = 4;
@@ -35,7 +37,7 @@ export function buildRichMenu(baseUrl) {
         height: row === ROWS - 1 ? H - row * ch : ch,
       };
       const action = t.uri
-        ? { type: 'uri', label: t.label, uri: baseUrl ? `${baseUrl}/#settings` : 'https://line.me' }
+        ? { type: 'uri', label: t.label, uri: baseUrl ? dashboardUrl('#settings', baseUrl) : 'https://line.me' }
         : { type: 'postback', label: t.label, data: t.data, displayText: t.label };
       return { bounds, action };
     }),

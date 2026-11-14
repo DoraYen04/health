@@ -1,4 +1,5 @@
 import { api, toast, esc, fmt, addDays, dateRange, md } from './api.js';
+import { initAuth, currentUser, signIn, signOut } from './auth.js';
 import { lineChart, barChart, destroyAll, color } from './charts.js';
 import { renderRecordTable, renderAddForm, SHEET_VIEWS } from './components/record-table.js';
 
@@ -9,41 +10,55 @@ let me = null;
 // 登入
 // ---------------------------------------------------------------------------
 
+const $msg = document.getElementById('login-msg');
+const $signin = document.getElementById('signin');
+let devAuth = false;
+
 async function boot() {
   try {
+    if (!devAuth) {
+      const cfg = await api('/config').catch(() => ({}));
+      devAuth = !!cfg.devAuth;
+    }
+    if (!devAuth) {
+      if (!(await initAuth())) return showLogin('無法載入 Firebase 設定，請透過 Firebase Hosting 網址開啟 Dashboard。', false);
+      if (!currentUser()) return showLogin();
+    }
     me = await api('/me');
     document.getElementById('who').textContent = me.display_name || me.email || '';
     document.getElementById('login').classList.add('hidden');
     route();
   } catch (e) {
-    if (e.status === 401) return showLogin();
+    if (e.status === 401) return showLogin('登入已過期，請重新登入。');
+    if (e.status === 403) {
+      await signOut().catch(() => {});
+      return showLogin(e.message);
+    }
     toast(e.message, true);
   }
 }
 
-async function showLogin() {
+function showLogin(message = '', canSignIn = true) {
   document.getElementById('login').classList.remove('hidden');
-  const cfg = await api('/config');
-  const msg = document.getElementById('login-msg');
-  if (!cfg.googleClientId) { msg.textContent = '伺服器尚未設定 DASHBOARD_GOOGLE_CLIENT_ID'; return; }
-  const init = () => {
-    if (!window.google?.accounts?.id) { setTimeout(init, 300); return; }
-    window.google.accounts.id.initialize({
-      client_id: cfg.googleClientId,
-      callback: async ({ credential }) => {
-        try {
-          await api('/auth/google', { method: 'POST', body: { credential } });
-          boot();
-        } catch (e) { msg.textContent = e.message; }
-      },
-    });
-    window.google.accounts.id.renderButton(document.getElementById('gsi-btn'), { theme: 'outline', size: 'large', locale: 'zh-TW' });
-  };
-  init();
+  $msg.textContent = message;
+  $signin.classList.toggle('hidden', !canSignIn);
 }
 
+$signin.onclick = async () => {
+  $msg.textContent = '';
+  try {
+    await signIn();
+    await boot();
+  } catch (e) {
+    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    $msg.textContent = e.code === 'auth/popup-blocked'
+      ? '登入視窗被瀏覽器擋下，請允許彈出視窗後再試一次。'
+      : `登入失敗：${e.message}`;
+  }
+};
+
 document.getElementById('logout').onclick = async () => {
-  await api('/auth/logout', { method: 'POST' }).catch(() => {});
+  await signOut().catch(() => {});
   location.reload();
 };
 

@@ -1,33 +1,12 @@
 import express from 'express';
 import { verifySignature } from './line-client.js';
-import { handleEvent } from './message-handler.js';
+import { cloudTasksEnabled, enqueueEvents, processEventsLocally } from './event-queue.js';
 import { logSystem } from '../services/common.js';
-
-// 近期處理過的 webhookEventId（避免 LINE 重送時重複寫入；單一實例內有效）
-const seen = new Map();
-function alreadySeen(id) {
-  if (!id) return false;
-  const now = Date.now();
-  for (const [k, t] of seen) if (now - t > 3600_000) seen.delete(k);
-  if (seen.has(id)) return true;
-  seen.set(id, now);
-  return false;
-}
-
-// 同一使用者的事件依序處理，避免「確認」與下一則訊息互相競爭
-const queues = new Map();
-function enqueue(userId, task) {
-  const prev = queues.get(userId) || Promise.resolve();
-  const next = prev.then(task, task).finally(() => {
-    if (queues.get(userId) === next) queues.delete(userId);
-  });
-  queues.set(userId, next);
-  return next;
-}
 
 export const webhookRouter = express.Router();
 
-webhookRouter.post('/', express.raw({ type: '*/*', limit: '2mb' }), (req, res) => {
+// 必須使用原始 body 驗證 x-line-signature，簽章不符一律 401（擋掉偽造訊息）
+webhookRouter.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
   const signature = req.get('x-line-signature');
   if (!verifySignature(req.body, signature)) {
     logSystem('warn', 'webhook', '簽章驗證失敗', req.ip);
@@ -39,11 +18,20 @@ webhookRouter.post('/', express.raw({ type: '*/*', limit: '2mb' }), (req, res) =
   } catch {
     return res.status(400).send('bad json');
   }
-  // 立即回 200，事件於背景處理（Cloud Run 需設定 --no-cpu-throttling）
-  res.status(200).send('ok');
-  for (const ev of body.events || []) {
-    if (alreadySeen(ev.webhookEventId)) continue;
-    const uid = ev.source?.userId || 'anon';
-    enqueue(uid, () => handleEvent(ev));
+  const events = body.events || [];
+
+  if (cloudTasksEnabled()) {
+    // 雲端：放進 Cloud Tasks 佇列後才回 200；佇列失敗回 500，LINE 可重送
+    try {
+      await enqueueEvents(events);
+    } catch (e) {
+      await logSystem('error', 'webhook', '事件放入佇列失敗', e.stack || e.message);
+      return res.status(500).send('enqueue failed');
+    }
+    return res.status(200).send('ok');
   }
+
+  // 本機：立即回 200，事件於背景處理
+  res.status(200).send('ok');
+  processEventsLocally(events);
 });

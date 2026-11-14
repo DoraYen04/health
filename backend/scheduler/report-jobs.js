@@ -3,7 +3,7 @@ import { REMINDER_STATUS as RS } from '../database/schema.js';
 import { generateReport, formatReportText } from '../services/report-service.js';
 import { lineClient, textWithQuickReply } from '../line/line-client.js';
 import { logSystem } from '../services/common.js';
-import { config } from '../../config/settings.js';
+import { config, dashboardUrl } from '../../config/settings.js';
 
 const MAX_RETRY = 3;
 
@@ -20,7 +20,7 @@ export async function runReportTask({ userId, task, reportType, today, now, logB
   let report;
   try {
     report = await generateReport(userId, reportType, today, { force: true, tz: undefined });
-    const dashboard = config.baseUrl ? [{ label: '開啟 Dashboard', uri: `${config.baseUrl}/` }] : [];
+    const dashboard = config.baseUrl ? [{ label: '開啟 Dashboard', uri: dashboardUrl() }] : [];
     const text = formatReportText(report);
     await lineClient.push(userId, dashboard.length ? textWithQuickReply(text, dashboard) : text);
     await store.update('Report_Log', report.report_id, { delivery_status: '已傳送', delivered_at: now.iso });

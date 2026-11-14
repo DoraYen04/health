@@ -4,24 +4,27 @@
 LINE 負責日常紀錄與提醒，Gemini 負責照片辨識、飲食估算與報告解讀，Google Sheets 存資料，Google Drive 存照片，Web Dashboard 看長期趨勢、修正資料、管理排程。
 
 ```
-LINE 官方帳號 ──Webhook──▶ Cloud Run (Node.js / Express) ──▶ Google Sheets（15 張表）
-     ▲                         │   │                        └▶ Google Drive（照片，不公開）
-     └──── Push 提醒／報告 ─────┘   └──▶ Gemini API（辨識／估算／摘要）
-Cloud Scheduler ─每 5 分鐘─▶ /jobs/tick      Web Dashboard（同一個 Cloud Run，Google 登入）
+LINE 官方帳號 ──Webhook──▶ Cloud Run ──▶ Cloud Tasks ──▶ Cloud Run /tasks/line-event ──▶ Google Sheets（15 張表）
+     ▲                                                     │   │                      └▶ Google Drive（照片，不公開）
+     └──────────── Push 提醒／Reply 回覆 ──────────────────┘   └──▶ Gemini API（辨識／估算／摘要）
+Cloud Scheduler ─每 5 分鐘（OIDC）─▶ /jobs/tick
+Web Dashboard：Firebase Hosting ──/api/**──▶ Cloud Run（Firebase Authentication，Google 登入＋白名單）
 ```
 
 ## 專案結構
 
 ```
 backend/
-  server.js                 Express 入口（/webhook、/jobs/tick、/api、Dashboard 靜態檔）
-  line/                     webhook.js（簽章驗證）、parser.js（文字指令）、message-handler.js（對話流程）、rich-menu.js
+  server.js                 Express 入口（/webhook、/tasks/line-event、/jobs/tick、/api、Dashboard 靜態檔）
+  line/                     webhook.js（簽章驗證）、event-queue.js（Cloud Tasks／本機處理）、parser.js（文字指令）、message-handler.js（對話流程）、rich-menu.js
   gemini/                   client.js（REST）、image-analysis.js（體脂）、meal-analysis.js（飲食）、report-analysis.js（報告／問答）
   services/                 weight / body / meal / exercise / injection / goal / pending / report-calc / report-service
   scheduler/                reminder-job.js（提醒＋補提醒＋逾期）、report-jobs.js（日／週／月報告推播）
   database/                 schema.js（欄位定義）、sheets-service.js（Sheets／記憶體兩種實作）、drive-service.js
-  api/                      dashboard-api.js、auth.js（Google 登入）
-dashboard/                  index.html + js/（原生 ES Modules + Chart.js）
+  api/                      dashboard-api.js、auth.js（Firebase ID token＋白名單）、invoker-auth.js（OIDC）
+dashboard/                  index.html + js/（原生 ES Modules + Chart.js；auth.js 為 Firebase Auth 登入）
+firebase.json, .firebaserc  Firebase Hosting 設定
+deploy.md                   雲端部署步驟
 scripts/                    setup-sheets.js、setup-rich-menu.js、get-refresh-token.js、make-rich-menu-image.py、seed-demo.js
 test/                       node:test（解析、報告計算、完整對話與排程流程）
 ```
@@ -30,60 +33,26 @@ test/                       node:test（解析、報告計算、完整對話與�
 
 ```bash
 npm install
-npm test                                   # 15 個測試
+npm test                                   # 26 個測試
 STORAGE=memory SEED_DEMO=1 DEV_AUTH_USER_ID=U_demo npm run dev
 # 開啟 http://localhost:8080 → 直接看到含 40 天示範資料的 Dashboard
 ```
 
 Windows PowerShell：`$env:STORAGE="memory"; $env:SEED_DEMO="1"; $env:DEV_AUTH_USER_ID="U_demo"; npm run dev`
 
-## 正式部署步驟
+## 雲端部署
 
-### 1. Google Cloud
-1. 建立專用 GCP 專案，啟用 **Google Sheets API、Google Drive API、Cloud Run、Cloud Scheduler、Secret Manager**。
-2. OAuth 同意畫面：使用者類型「外部」，加入自己的帳號為測試使用者，然後按 **「發布應用程式」改為正式版**（停留在「測試」狀態的 refresh token 7 天就會失效）。
-3. 建立兩個 OAuth 用戶端 ID：
-   - **電腦版應用程式** → `GOOGLE_OAUTH_CLIENT_ID / SECRET`，用來存取 Sheets／Drive
-   - **網頁應用程式**（已授權 JavaScript 來源填 Cloud Run 網址）→ `DASHBOARD_GOOGLE_CLIENT_ID`
-4. 複製 `.env.example` 為 `.env` 填好後：
-   ```bash
-   node --env-file=.env scripts/get-refresh-token.js   # 取得 GOOGLE_OAUTH_REFRESH_TOKEN
-   node --env-file=.env scripts/setup-sheets.js        # 建立試算表（15 張表）與照片資料夾，印出 ID
-   ```
-   > 為什麼不用 Service Account？個人 Gmail 的 Service Account 沒有 Drive 儲存空間，無法上傳照片。若使用 Google Workspace 共用雲端硬碟，可不填 OAuth 三個值，改用 Cloud Run 服務帳號（ADC），並把試算表分享給服務帳號。
+完整步驟（主控台設定、gcloud / firebase 指令、LINE 設定、費用注意事項）見 **[deploy.md](deploy.md)**。
 
-### 2. LINE
-1. LINE Developers 建立 Messaging API Channel，取得 Channel secret 與 Channel access token。
-2. LINE Official Account Manager：關閉「自動回應訊息」，開啟「Webhook」。
-3. Webhook URL 設為 `https://<Cloud Run 網址>/webhook`，部署後按「Verify」。
+| 部分 | 放在哪裡 |
+|---|---|
+| `dashboard/` | Firebase Hosting（`/api/**`、`/webhook` 轉送到 Cloud Run） |
+| `backend/` | Cloud Run（現有 Dockerfile） |
+| LINE 事件 | Webhook 驗證簽章後放入 Cloud Tasks，再由 `/tasks/line-event` 處理 |
+| 提醒排程 | Cloud Scheduler 每 5 分鐘以 OIDC 呼叫 `/jobs/tick` |
+| 金鑰 | Secret Manager |
 
-### 3. Gemini
-Google AI Studio 建立 API Key → `GEMINI_API_KEY`。模型由 `GEMINI_MODEL` 設定（預設 `gemini-2.5-flash`），上線前請依官方文件確認可用模型名稱。
-
-### 4. 部署 Cloud Run
-```bash
-# 金鑰放 Secret Manager（範例）
-printf '%s' "$LINE_CHANNEL_SECRET" | gcloud secrets create line-channel-secret --data-file=-
-# …其餘 LINE_CHANNEL_ACCESS_TOKEN、GEMINI_API_KEY、GOOGLE_OAUTH_*、SESSION_SECRET、JOB_SECRET 同理
-
-gcloud run deploy health --source . --region asia-east1 --allow-unauthenticated \
-  --no-cpu-throttling --max-instances 1 --memory 512Mi \
-  --set-env-vars STORAGE=sheets,TZ_DEFAULT=Asia/Taipei,SPREADSHEET_ID=...,DRIVE_FOLDER_ID=...,ALLOWED_EMAILS=you@gmail.com,DASHBOARD_GOOGLE_CLIENT_ID=...,BASE_URL=https://... \
-  --set-secrets LINE_CHANNEL_SECRET=line-channel-secret:latest,LINE_CHANNEL_ACCESS_TOKEN=...,GEMINI_API_KEY=...,GOOGLE_OAUTH_CLIENT_ID=...,GOOGLE_OAUTH_CLIENT_SECRET=...,GOOGLE_OAUTH_REFRESH_TOKEN=...,SESSION_SECRET=...,JOB_SECRET=...
-```
-- `--no-cpu-throttling`：Webhook 先回 200 再於背景處理（AI 辨識可能 10–30 秒），需要 CPU 持續配置。
-- `--max-instances 1`：Sheets 不是交易型資料庫，單一實例可避免重複寫入與重複推播。
-
-### 5. 排程與選單
-```bash
-gcloud scheduler jobs create http health-tick --location asia-east1 \
-  --schedule "*/5 * * * *" --time-zone "Asia/Taipei" \
-  --uri "https://<Cloud Run 網址>/jobs/tick" --http-method POST \
-  --headers "X-Job-Secret=<JOB_SECRET>"
-
-node --env-file=.env scripts/setup-rich-menu.js        # 上傳 assets/rich-menu.png 並設為預設選單
-```
-最後在 LINE 加入官方帳號好友 → 系統自動建立 Settings 與預設排程（只啟用上午／下午體重、每週一施打提醒，各提醒一次、不補提醒；體脂測量與日／週／月報告預設停用，可在 Dashboard 啟用） → 用 Google 登入 Dashboard（第一次登入會自動綁定唯一的 LINE 使用者）。
+安全機制：Dashboard 以 Firebase Authentication（Google）登入並限 `ALLOWED_EMAILS` 白名單；所有 `/api` 驗證 Firebase ID token；LINE webhook 驗證 `x-line-signature`；`/jobs/*`、`/tasks/*` 只接受 `INVOKER_SA_EMAIL` 簽發的 OIDC token。
 
 ## LINE 指令
 
@@ -117,7 +86,7 @@ node --env-file=.env scripts/setup-rich-menu.js        # 上傳 assets/rich-menu
 | `measure_time` 定義 | 使用者指定的測量時間；未指定時為輸入時間；補登未指定時間則留空。資料建立時間另存 `created_at` |
 | 同時段多筆 | 報告採該時段最後輸入的一筆 |
 | 即時查詢報告 | LINE 查詢尚未產生的報告時即時計算但不寫入 Report_Log，避免影響排程推播 |
-| 施打提醒 | 預設建立但**停用**，請依醫囑在 Dashboard 設定星期與時間後啟用 |
+| 預設提醒 | 只啟用上午／下午體重與每週一施打提醒，各提醒一次、不補提醒；體脂測量與日／週／月報告預設停用，可在 Dashboard 啟用。施打日請依醫囑調整 |
 
 ## 注意事項
 - **LINE 訊息額度**：回覆（reply）免費，推播（push）計入每月額度。預設每日 2 次體重提醒＋每週 1 次施打提醒，一個月約 65 則；在 Dashboard 啟用補提醒或報告推播會增加則數。

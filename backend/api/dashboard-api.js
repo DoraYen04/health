@@ -2,7 +2,7 @@ import express from 'express';
 import { getStore } from '../database/sheets-service.js';
 import { SHEETS, STATUS, TASK_TYPES, DEFAULT_SETTINGS } from '../database/schema.js';
 import { config } from '../../config/settings.js';
-import { requireAuth, loginWithGoogle, logout } from './auth.js';
+import { requireAuth, devAuthEnabled } from './auth.js';
 import { addDays, isoNow, nowIn, weekdayZh, isDateStr, toMinutes } from '../utils/time.js';
 import { getSettings, updateWithAudit, isActive, logSystem, toBool } from '../services/common.js';
 import { listWeights, createWeight, validateWeight } from '../services/weight-service.js';
@@ -22,14 +22,14 @@ apiRouter.use(express.json({ limit: '1mb' }));
 // 公開
 // ---------------------------------------------------------------------------
 
-apiRouter.get('/config', (req, res) => {
-  res.json({
-    googleClientId: config.dashboard.googleClientId,
-    devAuth: process.env.NODE_ENV !== 'production' && !!process.env.DEV_AUTH_USER_ID,
-  });
+apiRouter.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store'); // 經 Firebase Hosting 轉送時避免被 CDN 快取
+  next();
 });
-apiRouter.post('/auth/google', loginWithGoogle);
-apiRouter.post('/auth/logout', logout);
+
+apiRouter.get('/config', (req, res) => {
+  res.json({ devAuth: devAuthEnabled() });
+});
 
 apiRouter.use(requireAuth);
 

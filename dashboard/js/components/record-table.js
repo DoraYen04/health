@@ -1,4 +1,4 @@
-import { api, esc, toast } from '../api.js';
+import { api, esc, toast, openProtected } from '../api.js';
 
 // 每張資料表要顯示的欄位、標籤與輸入型態
 export const SHEET_VIEWS = {
@@ -46,7 +46,7 @@ export const SHEET_VIEWS = {
 
 function cell(row, [key, , type]) {
   const v = row[key];
-  if (type === 'photo') return v ? `<a href="/api/photos/${esc(v)}" target="_blank" rel="noopener">檢視</a>` : '';
+  if (type === 'photo') return v ? `<a href="#" data-photo="${esc(v)}">檢視</a>` : '';
   return esc(v ?? '');
 }
 
@@ -84,6 +84,8 @@ export async function renderRecordTable(container, sheet, { from, to, onChange }
   draw();
 
   container.onclick = async (e) => {
+    const photo = e.target.closest('a[data-photo]');
+    if (photo) { e.preventDefault(); return openProtected(`/photos/${encodeURIComponent(photo.dataset.photo)}`); }
     const btn = e.target.closest('button');
     if (!btn) return;
     const tr = btn.closest('tr');

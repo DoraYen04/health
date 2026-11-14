@@ -1,18 +1,39 @@
+import { idToken } from './auth.js';
+
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
+}
+
+async function authHeaders() {
+  const token = await idToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api${path}`, {
     method,
-    credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { ...(await authHeaders()), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = {};
   try { data = await res.json(); } catch { data = {}; }
   if (!res.ok) throw new ApiError(res.status, data.error || `HTTP ${res.status}`);
   return data;
+}
+
+/** 需要登入的檔案（例如照片）：帶 token 下載後以 blob 網址開啟 */
+export async function openProtected(path) {
+  const win = window.open('', '_blank'); // 先開視窗，避免被瀏覽器當成彈出視窗擋下
+  try {
+    const res = await fetch(`/api${path}`, { headers: await authHeaders() });
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    if (win) win.location.href = url; else window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    if (win) win.close();
+    toast(`無法開啟：${e.message}`, true);
+  }
 }
 
 export function toast(msg, isErr = false) {

@@ -1,7 +1,7 @@
 import { lineClient, textWithQuickReply, confirmButtons } from './line-client.js';
 import { parseCommand } from './parser.js';
 import { getStore } from '../database/sheets-service.js';
-import { config } from '../../config/settings.js';
+import { config, dashboardUrl } from '../../config/settings.js';
 import { nowIn, displayDate, addDays } from '../utils/time.js';
 import { ensureUser, getSettings, logSystem, num, round, updateWithAudit, toBool } from '../services/common.js';
 import {
@@ -619,7 +619,7 @@ async function replyReport(ctx, type) {
   // 已產生（排程送出過）的報告直接回傳；尚未產生則即時計算，但不寫入 Report_Log，避免影響排程推播
   let report = await findReport(userId, type, range);
   if (!report) report = await generateTransient(userId, type, now.date, settings);
-  const extra = config.baseUrl ? [{ label: '開啟 Dashboard', uri: `${config.baseUrl}/` }] : [];
+  const extra = config.baseUrl ? [{ label: '開啟 Dashboard', uri: dashboardUrl() }] : [];
   return respond(extra.length ? textWithQuickReply(formatReportText(report), extra) : formatReportText(report));
 }
 
@@ -679,7 +679,7 @@ async function replyHistory(ctx, days) {
   }
   const s = summarizeExercise(ex);
   lines.push(s.recorded ? `🚴 運動 ${s.total_min} 分鐘／${s.days} 天` : '🚴 無運動紀錄');
-  if (config.baseUrl) lines.push('', `完整趨勢圖：${config.baseUrl}/`);
+  if (config.baseUrl) lines.push('', `完整趨勢圖：${dashboardUrl()}`);
   return respond(lines.join('\n'));
 }
 

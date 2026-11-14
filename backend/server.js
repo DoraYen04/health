@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import { config, assertProductionConfig } from '../config/settings.js';
 import { webhookRouter } from './line/webhook.js';
+import { handleEvent } from './line/message-handler.js';
 import { apiRouter } from './api/dashboard-api.js';
+import { requireInvoker } from './api/invoker-auth.js';
 import { runTick } from './scheduler/reminder-job.js';
 import { logSystem } from './services/common.js';
 
@@ -15,7 +15,6 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', true);
   app.disable('x-powered-by');
-  app.use(cookieParser());
 
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
@@ -28,9 +27,8 @@ export function createApp() {
   // LINE Webhook（需原始 body 驗證簽章，必須放在 express.json 之前）
   app.use('/webhook', webhookRouter);
 
-  // 排程：Cloud Scheduler 每 5 分鐘 POST /jobs/tick，Header 帶 X-Job-Secret
-  app.post('/jobs/tick', async (req, res) => {
-    if (!checkJobSecret(req.get('x-job-secret'))) return res.status(401).json({ error: 'unauthorized' });
+  // 排程：Cloud Scheduler 每 5 分鐘 POST /jobs/tick（OIDC 驗證）
+  app.post('/jobs/tick', requireInvoker, async (req, res) => {
     try {
       const summary = await runTick();
       res.json(summary);
@@ -40,6 +38,17 @@ export function createApp() {
     }
   });
 
+  // LINE 事件：Cloud Tasks 派送（OIDC 驗證），在此請求內處理完畢。
+  // 一律回 200（錯誤已記錄並回覆使用者），避免佇列重試造成重複寫入。
+  app.post('/tasks/line-event', requireInvoker, express.json({ limit: '2mb' }), async (req, res) => {
+    try {
+      await handleEvent(req.body || {});
+    } catch (e) {
+      await logSystem('error', 'tasks', 'LINE 事件處理失敗', e.stack || e.message);
+    }
+    res.json({ ok: true });
+  });
+
   app.use('/api', apiRouter);
 
   // Dashboard 靜態檔
@@ -47,14 +56,6 @@ export function createApp() {
 
   app.use((req, res) => res.status(404).json({ error: 'not found' }));
   return app;
-}
-
-function checkJobSecret(given) {
-  const expected = config.jobs.secret;
-  if (!expected || !given) return false;
-  const a = Buffer.from(String(given));
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

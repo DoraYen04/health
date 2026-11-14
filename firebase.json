@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "public": "dashboard",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/api/**", "run": { "serviceId": "health", "region": "asia-east1" } },
+      { "source": "/webhook", "run": { "serviceId": "health", "region": "asia-east1" } }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|css)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}
