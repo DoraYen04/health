@@ -50,9 +50,36 @@ function cell(row, [key, , type]) {
   return esc(v ?? '');
 }
 
+/** 手動輸入的時間轉成 HH:MM：7 → 07:00、730 → 07:30、7:5 → 07:05、2215 → 22:15；無法辨識回傳 null */
+export function normalizeTime(raw) {
+  const s = String(raw ?? '').trim().replace(/[：.．]/g, ':');
+  if (!s) return '';
+  let h; let m;
+  const colon = s.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (colon) [h, m] = [colon[1], colon[2]];
+  else if (/^\d{1,2}$/.test(s)) [h, m] = [s, '0'];
+  else if (/^\d{3,4}$/.test(s)) [h, m] = [s.slice(0, -2), s.slice(-2)];
+  else return null;
+  h = Number(h); m = Number(m);
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** 讀取欄位值；時間欄位會先正規化，格式錯誤時丟出錯誤 */
+function readValue(el) {
+  if (el.dataset.time === undefined) return el.value;
+  const t = normalizeTime(el.value);
+  if (t === null) { el.focus(); throw new Error(`時間格式錯誤：「${el.value}」，請輸入例如 07:30 或 0730`); }
+  el.value = t;
+  return t;
+}
+
 function input(row, [key, , type, opts]) {
   const v = row[key] ?? '';
   if (type === 'ro' || type === 'photo') return cell(row, [key, '', type]);
+  if (type === 'time') {
+    return `<input type="text" data-k="${key}" data-time inputmode="numeric" maxlength="5" placeholder="例 07:30" autocomplete="off" value="${esc(v)}">`;
+  }
   if (type === 'select') {
     return `<select data-k="${key}">${['', ...opts].map((o) => `<option ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   }
@@ -63,7 +90,7 @@ function input(row, [key, , type, opts]) {
 /**
  * 可編輯表格：點「修改」→ 行內編輯 →「儲存」寫回（後端保留修改前後值）
  */
-export async function renderRecordTable(container, sheet, { from, to, onChange } = {}) {
+export async function renderRecordTable(container, sheet, { from, to, onChange, onCopy } = {}) {
   const view = SHEET_VIEWS[sheet];
   const q = new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) });
   const { rows } = await api(`/records/${sheet}?${q}`);
@@ -77,7 +104,7 @@ export async function renderRecordTable(container, sheet, { from, to, onChange }
         <tbody>${rows.map((r) => `
           <tr data-id="${esc(r[idKey])}">
             ${view.cols.map((c) => `<td class="${numeric.has(c[0]) ? 'num' : ''}">${cell(r, c)}</td>`).join('')}
-            <td style="white-space:nowrap"><button data-act="edit">修改</button> <button data-act="del" class="danger">刪除</button> <button data-act="hist">歷程</button></td>
+            <td style="white-space:nowrap"><button data-act="edit">修改</button> <button data-act="del" class="danger">刪除</button> <button data-act="hist">歷程</button>${onCopy ? ' <button data-act="copy">複製</button>' : ''}</td>
           </tr>`).join('')}
         </tbody></table></div>` : '<p class="muted">此期間沒有資料。</p>';
   };
@@ -103,7 +130,7 @@ export async function renderRecordTable(container, sheet, { from, to, onChange }
         const patch = {};
         tr.querySelectorAll('[data-k]').forEach((el) => {
           const k = el.dataset.k;
-          const val = el.value;
+          const val = readValue(el);
           if (String(row[k] ?? '') !== val) patch[k] = numeric.has(k) ? (val === '' ? null : Number(val)) : val;
         });
         if (!Object.keys(patch).length) { draw(); return; }
@@ -119,6 +146,8 @@ export async function renderRecordTable(container, sheet, { from, to, onChange }
         toast('已刪除');
         draw();
         onChange?.();
+      } else if (act === 'copy') {
+        onCopy?.(row);
       } else if (act === 'hist') {
         const { rows: logs } = await api(`/audit?record_id=${encodeURIComponent(id)}`);
         window.alert(logs.length ? logs.map((l) => `${l.changed_at}  ${l.field}：${l.before_value} → ${l.after_value}（${l.changed_by}）`).join('\n') : '沒有修改紀錄');
@@ -138,15 +167,20 @@ export function renderAddForm(container, sheet, defaults, onDone) {
       ${cols.map((c) => `<label class="field">${c[1]}${input(defaults, c)}</label>`).join('')}
       <div style="display:flex;align-items:end"><button class="primary" type="submit">新增</button></div>
     </form>`;
+  // 離開時間欄位時自動整理格式（例：730 → 07:30）
+  container.querySelectorAll('[data-time]').forEach((el) => {
+    el.onblur = () => { const t = normalizeTime(el.value); if (t) el.value = t; };
+  });
   container.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();
     const body = {};
-    container.querySelectorAll('[data-k]').forEach((el) => {
-      if (el.value === '') return;
-      const c = cols.find((x) => x[0] === el.dataset.k);
-      body[el.dataset.k] = c[2] === 'number' ? Number(el.value) : el.value;
-    });
     try {
+      container.querySelectorAll('[data-k]').forEach((el) => {
+        const val = readValue(el);
+        if (val === '') return;
+        const c = cols.find((x) => x[0] === el.dataset.k);
+        body[el.dataset.k] = c[2] === 'number' ? Number(val) : val;
+      });
       await api(`/records/${sheet}`, { method: 'POST', body });
       toast('已新增');
       onDone?.();

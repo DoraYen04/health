@@ -267,8 +267,16 @@ async function records() {
     const from = document.getElementById('r-from').value;
     const to = document.getElementById('r-to').value;
     const dateKey = SHEET_VIEWS[sheet].cols[0][0];
-    renderAddForm(document.getElementById('r-add'), sheet, { [dateKey]: me.today }, load);
-    await renderRecordTable(document.getElementById('r-table'), sheet, { from, to });
+    const addBox = document.getElementById('r-add');
+    renderAddForm(addBox, sheet, { [dateKey]: me.today }, load);
+    // 「複製」：把該筆資料帶入新增表單，修改後再按「新增」
+    const onCopy = (row) => {
+      renderAddForm(addBox, sheet, row, load);
+      addBox.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      addBox.querySelector('[data-k]')?.focus({ preventScroll: true });
+      toast('已複製到「新增／補登」，修改後按「新增」');
+    };
+    await renderRecordTable(document.getElementById('r-table'), sheet, { from, to, onCopy });
   };
   document.getElementById('sheet-pick').onclick = (e) => {
     const b = e.target.closest('button[data-s]');
