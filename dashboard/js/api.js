@@ -21,6 +21,19 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+/** 上傳圖片（原始檔案直接當作 request body） */
+export async function uploadImage(path, file) {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { ...(await authHeaders()), 'Content-Type': file.type || 'image/jpeg' },
+    body: file,
+  });
+  let data = {};
+  try { data = await res.json(); } catch { data = {}; }
+  if (!res.ok) throw new ApiError(res.status, data.error || (res.status === 413 ? '圖片太大（上限 20 MB）' : `HTTP ${res.status}`));
+  return data;
+}
+
 /** 需要登入的檔案（例如照片）：帶 token 下載後以 blob 網址開啟 */
 export async function openProtected(path) {
   const win = window.open('', '_blank'); // 先開視窗，避免被瀏覽器當成彈出視窗擋下

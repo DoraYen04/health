@@ -13,7 +13,8 @@ import { createInjection, listInjections } from '../services/injection-service.j
 import { goalsWithProgress, createGoal } from '../services/goal-service.js';
 import { generateReport, formatReportText } from '../services/report-service.js';
 import { taskOccursOn, isTaskCompleted } from '../scheduler/reminder-job.js';
-import { downloadPhoto } from '../database/drive-service.js';
+import { downloadPhoto, uploadPhoto } from '../database/drive-service.js';
+import { analyzeBodyPhoto } from '../gemini/image-analysis.js';
 
 export const apiRouter = express.Router();
 apiRouter.use(express.json({ limit: '1mb' }));
@@ -218,7 +219,13 @@ apiRouter.post('/records/:sheet', wrap(async (req, res) => {
     case 'Body_Composition': {
       const { values, warnings } = sanitizeBody(b);
       if (warnings.length) throw httpError(400, warnings.join('；'));
-      row = await createBodyComposition({ userId: uid, date: b.measure_date || now.date, time: b.measure_time || now.time, values, source: 'Dashboard手動', tz });
+      // 由「上傳報告截圖」帶入時，連結照片並標示來源
+      const photo = req.body?.photo_id ? await ownedRow('Body_Photo', String(req.body.photo_id), uid) : null;
+      row = await createBodyComposition({
+        userId: uid, date: b.measure_date || now.date, time: b.measure_time || (b.measure_date ? '' : now.time), values, tz,
+        photoId: photo?.photo_id, aiConfidence: photo ? '使用者確認' : '', source: photo ? 'Dashboard照片' : 'Dashboard手動',
+      });
+      if (photo) await getStore().update('Body_Photo', photo.photo_id, { ai_status: '已確認', related_record_id: row.body_id, updated_at: isoNow(tz) });
       break;
     }
     case 'Meal_Log': {
@@ -415,6 +422,40 @@ apiRouter.post('/reports/generate', wrap(async (req, res) => {
 // ---------------------------------------------------------------------------
 // 照片（後端代理，Drive 檔案不公開）
 // ---------------------------------------------------------------------------
+
+/**
+ * 上傳身體組成報告（體脂計照片或 App 長截圖）：存到 Google Drive → Gemini 讀值 → 回傳給前端填入表單。
+ * 這一步「不會」寫入 Body_Composition；使用者在 Dashboard 確認或修改後按「新增」才會儲存。
+ */
+apiRouter.post('/body/photo', express.raw({ type: 'image/*', limit: '20mb' }), wrap(async (req, res) => {
+  const buffer = req.body;
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw httpError(400, '請選擇圖片檔（JPG、PNG）');
+  const mimeType = String(req.get('Content-Type') || 'image/jpeg').split(';')[0];
+  const s = await getSettings(req.userId);
+  const now = nowIn(s.timezone);
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+  const file = await uploadPhoto({ buffer, mimeType, name: `body_${now.date.replace(/-/g, '')}_${now.time.replace(':', '')}_web.${ext}` });
+  const [photo] = await getStore().append('Body_Photo', {
+    user_id: req.userId, photo_date: now.date, photo_time: now.time, photo_type: '體脂',
+    drive_file_id: file.fileId, drive_url: file.webViewLink, ai_status: '待辨識', created_at: now.iso, updated_at: now.iso,
+  });
+  let r;
+  try {
+    r = await analyzeBodyPhoto(buffer, mimeType, { today: now.date });
+  } catch (e) {
+    await getStore().update('Body_Photo', photo.photo_id, { ai_status: '失敗', updated_at: isoNow(s.timezone) });
+    await logSystem('error', 'body-ai', 'Dashboard 體脂辨識失敗', e.message);
+    return res.json({ photo_id: photo.photo_id, ok: false, error: '照片已存到雲端硬碟，但 AI 辨識暫時失敗，請手動輸入數值。' });
+  }
+  const ok = r.isBody && r.readability !== 'unreadable';
+  await getStore().update('Body_Photo', photo.photo_id, { ai_status: ok ? '待確認' : '失敗', ai_raw_json: JSON.stringify(r.raw), updated_at: isoNow(s.timezone) });
+  res.json({
+    photo_id: photo.photo_id, ok,
+    error: ok ? '' : '這張圖片看起來不是身體組成報告，或文字無法辨識。照片已保存，可手動輸入數值。',
+    values: r.values, warnings: r.warnings, readability: r.readability,
+    measure_date: r.date || '', measure_time: r.time || '', date_from_report: !!r.date,
+  });
+}));
 
 apiRouter.get('/photos/:id', wrap(async (req, res) => {
   const photo = await ownedRow('Body_Photo', req.params.id, req.userId);

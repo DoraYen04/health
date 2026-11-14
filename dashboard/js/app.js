@@ -1,4 +1,4 @@
-import { api, toast, esc, fmt, addDays, dateRange, md } from './api.js';
+import { api, uploadImage, toast, esc, fmt, addDays, dateRange, md } from './api.js';
 import { initAuth, currentUser, signIn, signOut } from './auth.js';
 import { lineChart, barChart, destroyAll, color } from './charts.js';
 import { renderRecordTable, renderAddForm, SHEET_VIEWS } from './components/record-table.js';
@@ -271,6 +271,53 @@ function saveRange(from, to) {
   try { localStorage.setItem(RANGE_KEY, JSON.stringify({ from, to: to === me.today ? 'today' : to })); } catch { /* ignore */ }
 }
 
+/**
+ * 身體組成：上傳體脂計照片或 App 報告長截圖 → 存到 Google 雲端硬碟 → Gemini 讀值 → 填入下方表單。
+ * 填入後仍需確認或修改，再按「新增」才會儲存（並連結原始照片）。
+ */
+function renderBodyUpload(box, sheet, addBox, onDone) {
+  if (sheet !== 'Body_Composition') { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="upload-row">
+      <label class="primary upload-btn">📷 上傳報告截圖，自動填入<input type="file" accept="image/*" hidden></label>
+      <span class="muted" id="up-msg">支援體脂計照片或 App 長截圖；照片會存到 Google 雲端硬碟。</span>
+    </div>`;
+  const input = box.querySelector('input[type=file]');
+  const msg = box.querySelector('#up-msg');
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { toast('圖片太大（上限 20 MB）', true); return; }
+    box.querySelector('.upload-btn').classList.add('busy');
+    msg.textContent = '上傳並辨識中…長截圖約需 20–40 秒';
+    try {
+      const r = await uploadImage('/body/photo', file);
+      if (!r.ok) {
+        msg.textContent = r.error;
+        renderAddForm(addBox, sheet, { measure_date: me.today }, onDone, { photo_id: r.photo_id });
+        toast(r.error, true);
+        return;
+      }
+      const defaults = { ...r.values, measure_date: r.measure_date || me.today, measure_time: r.measure_time || '' };
+      renderAddForm(addBox, sheet, defaults, onDone, { photo_id: r.photo_id });
+      const missing = Object.entries(r.values).filter(([, v]) => v === null).length;
+      msg.innerHTML = [
+        `✅ 已辨識，請核對下方數值後按「新增」。照片已存到雲端硬碟。`,
+        r.date_from_report ? `量測日期依報告：${esc(r.measure_date)} ${esc(r.measure_time)}` : '⚠️ 報告上未辨識到日期，已先填今天，請確認。',
+        r.date_from_report && r.measure_date < addDays(me.today, -180) ? '⚠️ 這個日期距今超過半年，請確認年份是否辨識正確。' : '',
+        missing ? `有 ${missing} 個欄位未辨識，留空不會自動補值。` : '',
+        ...(r.warnings || []).map((w) => `⚠️ ${esc(w)}`),
+      ].filter(Boolean).join('<br>');
+    } catch (e) {
+      msg.textContent = `上傳失敗：${e.message}`;
+      toast(`上傳失敗：${e.message}`, true);
+    } finally {
+      box.querySelector('.upload-btn')?.classList.remove('busy');
+    }
+  };
+}
+
 async function records() {
   const sheets = Object.keys(SHEET_VIEWS);
   let sheet = sessionStorage.getItem('rec-sheet') || 'Weight_Log';
@@ -279,7 +326,7 @@ async function records() {
     <h2>資料管理</h2>
     <div class="toolbar" id="sheet-pick">${sheets.map((s) => `<button class="seg ${s === sheet ? 'on' : ''}" data-s="${s}">${SHEET_VIEWS[s].title}</button>`).join('')}</div>
     <div class="toolbar"><input type="date" id="r-from" value="${range.from}"> ～ <input type="date" id="r-to" value="${range.to}"> <button id="r-go">查詢</button> <button id="r-reset" title="回到最近 30 天">最近 30 天</button></div>
-    <div class="card"><h3>新增／補登</h3><div id="r-add"></div></div>
+    <div class="card"><h3>新增／補登</h3><div id="r-upload"></div><div id="r-add"></div></div>
     <div class="card"><div id="r-table"></div></div>`;
   const load = async () => {
     const from = document.getElementById('r-from').value;
@@ -288,6 +335,7 @@ async function records() {
     const dateKey = SHEET_VIEWS[sheet].cols[0][0];
     const addBox = document.getElementById('r-add');
     renderAddForm(addBox, sheet, { [dateKey]: me.today }, load);
+    renderBodyUpload(document.getElementById('r-upload'), sheet, addBox, load);
     // 「複製」：把該筆資料帶入新增表單，修改後再按「新增」
     const onCopy = (row) => {
       renderAddForm(addBox, sheet, row, load);

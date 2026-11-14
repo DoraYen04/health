@@ -378,7 +378,7 @@ async function processBodyPhoto(ctx, messageId) {
   const { photo, buffer, mimeType } = await savePhoto(ctx, messageId, '體脂');
   let result;
   try {
-    result = await analyzeBodyPhoto(buffer, mimeType);
+    result = await analyzeBodyPhoto(buffer, mimeType, { today: now.date });
   } catch (e) {
     await getStore().update('Body_Photo', photo.photo_id, { ai_status: '失敗', updated_at: now.iso });
     await logSystem('error', 'body-ai', '體脂辨識失敗', e.message);
@@ -388,10 +388,14 @@ async function processBodyPhoto(ctx, messageId) {
   if (!result.isBody || result.readability === 'unreadable') {
     return respond('這張照片看起來無法辨識體脂計數值 🙏 請在光線充足處、正面拍攝螢幕或報告後重新上傳。');
   }
-  const payload = { photoId: photo.photo_id, date: now.date, time: now.time, values: result.values, readability: result.readability };
+  // 量測時間以報告上的日期時間為準；讀不到才用上傳時間
+  const date = result.date || now.date;
+  const time = result.date ? (result.time || '') : now.time;
+  const payload = { photoId: photo.photo_id, date, time, values: result.values, readability: result.readability };
   const p = await createPending(userId, 'body', payload, { tz });
   const text = [
     '📷 Gemini 辨識結果｜等待確認',
+    `量測時間：${displayDate(date)}${time ? ` ${time}` : ''}${result.date ? '（依報告）' : '（報告上未辨識到日期，以上傳時間記錄）'}`,
     formatBody(result.values),
     ...(result.warnings.length ? ['', ...result.warnings.map((w) => `⚠️ ${w}`)] : []),
     '',

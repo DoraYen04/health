@@ -13,7 +13,7 @@ export const SHEET_VIEWS = {
   Body_Composition: {
     title: '身體組成',
     cols: [
-      ['measure_date', '日期', 'date'], ['weight_kg', '體重', 'number'], ['body_fat_pct', '體脂率 %', 'number'],
+      ['measure_date', '日期', 'date'], ['measure_time', '時間', 'time'], ['weight_kg', '體重', 'number'], ['body_fat_pct', '體脂率 %', 'number'],
       ['body_fat_kg', '體脂肪 kg', 'number'], ['skeletal_muscle_kg', '骨骼肌 kg', 'number'], ['visceral_fat', '內臟脂肪', 'number'],
       ['bmr_kcal', '基礎代謝', 'number'], ['bmi', 'BMI', 'number'], ['photo_id', '照片', 'photo'], ['ai_confidence', '辨識', 'ro'], ['status', '狀態', 'ro'],
     ],
@@ -180,7 +180,7 @@ export async function renderRecordTable(container, sheet, { from, to, onChange, 
 }
 
 /** 新增表單 */
-export function renderAddForm(container, sheet, defaults, onDone) {
+export function renderAddForm(container, sheet, defaults, onDone, extra = {}) {
   const view = SHEET_VIEWS[sheet];
   const cols = view.cols.filter((c) => !['ro', 'photo'].includes(c[2]));
   container.innerHTML = `
@@ -191,7 +191,7 @@ export function renderAddForm(container, sheet, defaults, onDone) {
   bindTimeFields(container);
   container.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();
-    const body = {};
+    const body = { ...extra }; // 例：上傳照片後帶入的 photo_id
     try {
       container.querySelectorAll('[data-k]').forEach((el) => {
         const val = readValue(el);

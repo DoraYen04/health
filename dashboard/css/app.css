@@ -133,3 +133,9 @@ pre.report { white-space: pre-wrap; background: var(--surface-2); border: 1px so
 .hidden { display: none !important; }
 .note { border-left: 4px solid var(--warning); background: var(--surface-2); padding: 10px 12px; border-radius: 6px; font-size: 13px; color: var(--text-secondary); }
 td button { white-space: nowrap; }
+
+/* 身體組成：上傳報告截圖 */
+.upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.upload-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  background: var(--accent); color: #fff; border: 1px solid var(--accent); font-weight: 600; }
+.upload-btn.busy { opacity: .6; pointer-events: none; }
