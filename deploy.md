@@ -72,16 +72,18 @@ node --env-file=.env scripts/setup-sheets.js        # 印出 SPREADSHEET_ID、DR
 ### 0. 設定變數
 
 ```bash
+source <(tr -d '\r' < .env)          # 先讀入 .env（SPREADSHEET_ID、金鑰等），下面的值才不會被 .env 覆蓋
 PROJECT=dora-health-6a02c            # Firebase 專案 ID
 REGION=asia-east1
 SA_RUN=health-run@$PROJECT.iam.gserviceaccount.com
 SA_INVOKER=health-invoker@$PROJECT.iam.gserviceaccount.com
-gcloud config set project $PROJECT
+export CLOUDSDK_CORE_PROJECT=$PROJECT   # 只影響這個終端機，不改 gcloud 全域預設專案（其他專案不受影響）
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
 SERVICE_URL=https://health-$PROJECT_NUMBER.$REGION.run.app
-source <(tr -d '\r' < .env)          # 讀入 .env（SPREADSHEET_ID、金鑰等）
 echo "$SERVICE_URL"
 ```
+
+> `.env` 裡的 `SERVICE_URL` 也請填成同一個網址（本專案為 `https://health-1084871097089.asia-east1.run.app`）。
 
 `.firebaserc` 裡的 `default` 也要改成同一個專案 ID。
 
@@ -151,7 +153,7 @@ gcloud run deploy health --source . --region $REGION \
 
 ```bash
 gcloud run services describe health --region $REGION --format='value(status.url)'
-curl -s $SERVICE_URL/healthz                                         # {"ok":true,"storage":"sheets"}
+curl -s $SERVICE_URL/health                                          # {"ok":true,"storage":"sheets"}
 curl -s -o /dev/null -w "%{http_code}\n" -X POST $SERVICE_URL/jobs/tick   # 401（沒有 OIDC token 被擋）
 ```
 

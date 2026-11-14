@@ -22,7 +22,8 @@ export function createApp() {
     next();
   });
 
-  app.get('/healthz', (req, res) => res.json({ ok: true, storage: config.storage }));
+  // Cloud Run 保留 /healthz（由 Google 前端攔截），雲端請用 /health
+  app.get(['/health', '/healthz'], (req, res) => res.json({ ok: true, storage: config.storage }));
 
   // LINE Webhook（需原始 body 驗證簽章，必須放在 express.json 之前）
   app.use('/webhook', webhookRouter);
