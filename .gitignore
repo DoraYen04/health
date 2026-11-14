@@ -1,0 +1,13 @@
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+dist/
+build/
+.vite/
+*.exe
+*.zip
+*.log
+.env
+.env.*

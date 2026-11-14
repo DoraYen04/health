@@ -1,0 +1,23 @@
+{
+  "name": "line-gemini-health",
+  "version": "1.0.0",
+  "description": "LINE + Gemini AI 個人減重健康管理系統（Google Sheets / Drive / Web Dashboard）",
+  "type": "module",
+  "main": "backend/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "test": "node --test test/*.test.js",
+    "setup:sheets": "node scripts/setup-sheets.js",
+    "setup:richmenu": "node scripts/setup-rich-menu.js",
+    "auth:token": "node scripts/get-refresh-token.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0"
+  }
+}
