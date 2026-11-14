@@ -138,3 +138,14 @@ test('排程（啟用每日報告時）：21:00 只送一次', async () => {
   const pushes = sent.filter((s) => s.url.endsWith('/push') && /每日報告/.test(s.body.messages[0].text));
   assert.equal(pushes.length, 1);
 });
+
+test('文字「體脂計照片」「餐點照片」會進入上傳照片情境，不交給一般問答', async () => {
+  for (const t of ['體脂計照片', '體脂', '上傳體脂', '身體組成報告', 'inbody']) {
+    sent.length = 0;
+    await text(t);
+    assert.match(lastText(), /請上傳體脂計測量照片/, t);
+  }
+  assert.ok((await getStore().list('Pending_Action')).some((p) => p.action_type === 'context_body'));
+  await text('餐點照片');
+  assert.match(lastText(), /今天吃了什麼/);
+});

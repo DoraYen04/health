@@ -199,8 +199,15 @@ async function trends() {
       <div class="card"><h3>體脂率 %</h3><div class="chart-box"><canvas id="c-fat"></canvas></div></div>
       <div class="card"><h3>骨骼肌重 kg</h3><div class="chart-box"><canvas id="c-muscle"></canvas></div></div>
     </div>
-    <div class="card"><h3>身體組成測量紀錄</h3><p class="muted">點「檢視」可看原始照片；所有修改都會保留修改前後值。</p><div id="t-body"></div></div>`;
+    <div class="card"><h3>身體組成測量紀錄</h3>
+      <div class="upload-row"><button class="primary" id="go-upload">📷 上傳報告截圖，自動填入</button>
+      <span class="muted">點「檢視」可看原始照片；所有修改都會保留修改前後值。</span></div>
+      <div id="t-body"></div></div>`;
   tb.bind();
+  document.getElementById('go-upload').onclick = () => {
+    try { sessionStorage.setItem('rec-sheet', 'Body_Composition'); } catch { /* ignore */ }
+    location.hash = '#records';
+  };
   async function load(from, to) {
     const s = await api(`/series?from=${from}&to=${to}`);
     drawWeight('c-weight', s);

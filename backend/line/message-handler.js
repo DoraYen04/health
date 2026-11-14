@@ -100,6 +100,12 @@ async function handleText(ctx, text) {
     }
   }
 
+  // 文字啟動照片流程：「體脂計照片」「上傳體脂」「身體組成」「餐點照片」等，之後上傳的照片直接進入對應辨識
+  if (cmd.type === 'unknown') {
+    if (/^(上傳)?(體脂(計)?|身體組成|InBody)(照片|截圖|報告|紀錄|記錄)?$/i.test(trimmed)) return handleMenu(ctx, 'body');
+    if (/^(上傳)?(餐點|飲食|食物)(照片|紀錄|記錄)$/.test(trimmed)) return handleMenu(ctx, 'meal');
+  }
+
   switch (cmd.type) {
     case 'confirm': {
       const p = await latestPending(userId);
