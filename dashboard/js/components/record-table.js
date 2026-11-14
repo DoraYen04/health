@@ -74,6 +74,26 @@ function readValue(el) {
   return t;
 }
 
+/**
+ * 時間欄位的即時處理（掛在容器上，表單與表格行內編輯共用）：
+ * 打字時依時間自動選 AM（00:00–11:59）／PM（12:00–23:59）；離開欄位時整理成 HH:MM。
+ * 同一列（或同一表單）有「時段」下拉選單才會帶入，之後仍可手動改。
+ */
+function bindTimeFields(container) {
+  const sync = (el, tidy) => {
+    if (el.dataset?.time === undefined) return;
+    const t = normalizeTime(el.value);
+    if (!t) return;
+    if (tidy) el.value = t;
+    const period = el.closest('tr, form')?.querySelector('select[data-k="period"]');
+    if (period) period.value = Number(t.slice(0, 2)) < 12 ? 'AM' : 'PM';
+  };
+  if (container.dataset.timeBound) return; // 容器重繪時不重複掛事件
+  container.dataset.timeBound = '1';
+  container.addEventListener('input', (e) => sync(e.target, false));
+  container.addEventListener('focusout', (e) => sync(e.target, true)); // focusout 會冒泡，blur 不會
+}
+
 function input(row, [key, , type, opts]) {
   const v = row[key] ?? '';
   if (type === 'ro' || type === 'photo') return cell(row, [key, '', type]);
@@ -109,6 +129,7 @@ export async function renderRecordTable(container, sheet, { from, to, onChange, 
         </tbody></table></div>` : '<p class="muted">此期間沒有資料。</p>';
   };
   draw();
+  bindTimeFields(container);
 
   container.onclick = async (e) => {
     const photo = e.target.closest('a[data-photo]');
@@ -167,10 +188,7 @@ export function renderAddForm(container, sheet, defaults, onDone) {
       ${cols.map((c) => `<label class="field">${c[1]}${input(defaults, c)}</label>`).join('')}
       <div style="display:flex;align-items:end"><button class="primary" type="submit">新增</button></div>
     </form>`;
-  // 離開時間欄位時自動整理格式（例：730 → 07:30）
-  container.querySelectorAll('[data-time]').forEach((el) => {
-    el.onblur = () => { const t = normalizeTime(el.value); if (t) el.value = t; };
-  });
+  bindTimeFields(container);
   container.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();
     const body = {};
