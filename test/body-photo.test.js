@@ -21,7 +21,7 @@ globalThis.fetch = async (url, opts = {}) => {
   if (String(url).includes('generativelanguage.googleapis.com')) {
     const body = JSON.parse(opts.body);
     geminiImages = body.contents[0].parts.filter((p) => p.inline_data).length;
-    const text = JSON.stringify(geminiReply);
+    const text = typeof geminiReply === 'string' ? geminiReply : JSON.stringify(geminiReply);
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return realFetch(url, opts);
@@ -94,4 +94,33 @@ test('上傳報告：未來日期不採用；非報告圖片回 ok=false；非�
 
   const bad = await realFetch(`${base}/api/body/photo`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'hello' });
   assert.equal(bad.status, 400);
+});
+
+test('身體組成分析：與上一次比較（差異由程式計算），第一次時說明無法比較', async () => {
+  const add = (b) => realFetch(`${base}/api/records/Body_Composition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  const gen = async (date) => (await (await realFetch(`${base}/api/reports/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'Body', date }) })).json()).row;
+  geminiReply = '【整體】測試摘要';
+
+  await add({ measure_date: '2026-10-14', measure_time: '06:35', weight_kg: 61, body_fat_pct: 31.3, body_fat_kg: 19.1, skeletal_muscle_kg: 23, visceral_fat: 8, bmr_kcal: 1275, bmi: 25.3 });
+  let r = await gen('2026-10-14');
+  assert.match(r.text, /上一次：無/);
+  const c1 = JSON.parse(r.comparison_json);
+  assert.equal(c1.vs_previous, null);
+
+  await add({ measure_date: '2026-11-14', measure_time: '07:00', weight_kg: 59.5, body_fat_pct: 29.8, body_fat_kg: 17.7, skeletal_muscle_kg: 23.2, visceral_fat: 7, bmr_kcal: 1268, bmi: 24.7 });
+  r = await gen('2026-11-14');
+  const c = JSON.parse(r.comparison_json);
+  assert.equal(c.previous.date, '2026-10-14');
+  assert.equal(c.days_since_previous, 31);
+  assert.equal(c.vs_previous.weight_kg, -1.5);
+  assert.equal(c.vs_previous.body_fat_pct, -1.5);
+  assert.equal(c.vs_previous.skeletal_muscle_kg, 0.2);
+  assert.equal(c.vs_previous.bmr_kcal, -7);
+  assert.equal(c.lean_mass_kg.diff, -0.1); // (59.5−17.7) − (61−19.1)
+  assert.match(r.text, /體脂率：29\.8 %（−1\.5 百分點）/);
+  assert.match(r.text, /骨骼肌：23\.2 kg（\+0\.2 kg）/);
+
+  // 報表中心列表可依類型讀取
+  const list = await (await realFetch(`${base}/api/reports?type=Body`)).json();
+  assert.equal(list.rows.length, 2);
 });

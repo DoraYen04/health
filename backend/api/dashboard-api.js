@@ -11,7 +11,7 @@ import { listMeals, createMeal, summarizeDay } from '../services/meal-service.js
 import { listExercise, createExercise, summarizeExercise } from '../services/exercise-service.js';
 import { createInjection, listInjections } from '../services/injection-service.js';
 import { goalsWithProgress, createGoal } from '../services/goal-service.js';
-import { generateReport, formatReportText } from '../services/report-service.js';
+import { generateReport, formatReportText, REPORT_TYPES } from '../services/report-service.js';
 import { taskOccursOn, isTaskCompleted } from '../scheduler/reminder-job.js';
 import { downloadPhoto, uploadPhoto } from '../database/drive-service.js';
 import { analyzeBodyPhoto } from '../gemini/image-analysis.js';
@@ -412,7 +412,7 @@ apiRouter.get('/reports', wrap(async (req, res) => {
 
 apiRouter.post('/reports/generate', wrap(async (req, res) => {
   const { type = 'Daily', date } = req.body || {};
-  if (!['Daily', 'Weekly', 'Monthly'].includes(type)) throw httpError(400, '報告類型錯誤');
+  if (!REPORT_TYPES.includes(type)) throw httpError(400, '報告類型錯誤');
   const s = await getSettings(req.userId);
   const d = isDateStr(date) ? date : today(s);
   const row = await generateReport(req.userId, type, d, { force: true, tz: s.timezone });

@@ -199,9 +199,9 @@ export function renderAddForm(container, sheet, defaults, onDone, extra = {}) {
         const c = cols.find((x) => x[0] === el.dataset.k);
         body[el.dataset.k] = c[2] === 'number' ? Number(val) : val;
       });
-      await api(`/records/${sheet}`, { method: 'POST', body });
+      const r = await api(`/records/${sheet}`, { method: 'POST', body });
       toast('已新增');
-      onDone?.();
+      onDone?.(r.row);
     } catch (err) {
       toast(err.message, true);
     }

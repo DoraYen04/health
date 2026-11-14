@@ -509,7 +509,15 @@ async function executePending(ctx, p) {
       await getStore().update('Body_Photo', d.photoId, { ai_status: '已確認', related_record_id: row.body_id });
       await resolvePending(p.pending_id, '已處理', tz);
       await markTaskCompleted(userId, 'body_composition', d.date, tz);
-      return respond(`✅ 已儲存 ${displayDate(d.date)} 身體組成資料及原始照片連結。`);
+      const saved = `✅ 已儲存 ${displayDate(d.date)} 身體組成資料及原始照片連結。`;
+      // 每次儲存後自動與上一次比較；分析失敗不影響已儲存的資料
+      try {
+        const report = await generateReport(userId, 'Body', d.date, { force: true, tz });
+        return respond([saved, formatReportText(report)]);
+      } catch (e) {
+        await logSystem('warn', 'report-ai', '身體組成分析產生失敗', e.message);
+        return respond(`${saved}\n（分析暫時無法產生，可稍後到 Dashboard 報表中心按「產生／更新報告」）`);
+      }
     }
     case 'injection': {
       await createInjection({ userId, date: d.date, time: d.time, medication: d.medication, dosageMg: d.dosage, status: d.status, tz });

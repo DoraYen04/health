@@ -1,4 +1,4 @@
-import { generate } from './client.js';
+import { generate, imagePart } from './client.js';
 
 const SYSTEM = `你是個人健康紀錄的報告撰寫助手，使用繁體中文。
 嚴格規則：
@@ -19,6 +19,42 @@ export async function summarizeReport(reportType, comparison) {
     temperature: 0.3,
     maxOutputTokens: 800,
   });
+  return text.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim();
+}
+
+const BODY_SYSTEM = `你是個人身體組成報告的解讀助手，使用繁體中文。
+資料來源：
+A. JSON：程式已計算好的測量值與差異（本次 vs 上一次、vs 區間第一次、趨勢、去脂體重、目標）。
+B. 圖片（可能沒有）：本次與上一次測量的原始報告截圖；長截圖會被切成多段，由上到下連續。每組圖片前會先標示是「本次」或「上一次」。
+嚴格規則：
+1. 體重、體脂率、體脂肪、骨骼肌、內臟脂肪、基礎代謝、BMI 及其差異，一律引用 JSON，不可自行計算或改數字。
+2. JSON 沒有、但圖片上有的指標（如水分、蛋白質、肌肉率、皮下脂肪、身體年齡、各部位肌肉或脂肪、體型評估），可以比較本次與上一次，但必須標示「（報告上顯示）」；看不清楚或只有一次有的就不要比較。
+3. 資料缺漏時說「無資料」或「未測量」，不可推測。沒有上一次測量時，說明無法比較，只描述本次。
+4. 體脂率變化單位是「百分點」。兩次間隔 7 天內的變化可能受水分與量測條件影響，要提醒。
+5. 不做診斷，不建議藥物、劑量或施打頻率；如有明顯異常，建議與醫師或專業人員討論。
+6. 格式（不要用 Markdown 標題或粗體）：
+   【整體】1–2 句總結。
+   【與上一次比較】2–4 點，重點放在體脂與肌肉的變化方向。
+   【報告其他指標】1–3 點（有圖片才寫，沒有就省略整段）。
+   【建議】2–3 點一般性生活習慣建議（飲食、蛋白質、阻力訓練、睡眠等）。
+   總長 450 字內。`;
+
+/**
+ * 身體組成分析：JSON（程式計算）＋ 本次與上一次的原始照片（選用）
+ * photos：{ latest: [{buffer,mimeType}], previous: [...] }
+ */
+export async function summarizeBodyReport(comparison, photos = {}) {
+  const parts = [];
+  if (photos.latest?.length) {
+    parts.push({ text: `【本次】${comparison.latest?.date || ''} 的原始報告（${photos.latest.length} 段）：` });
+    photos.latest.forEach((im) => parts.push(imagePart(im.buffer, im.mimeType)));
+  }
+  if (photos.previous?.length) {
+    parts.push({ text: `【上一次】${comparison.previous?.date || ''} 的原始報告（${photos.previous.length} 段）：` });
+    photos.previous.forEach((im) => parts.push(imagePart(im.buffer, im.mimeType)));
+  }
+  parts.push({ text: `${parts.length ? '' : '（沒有原始照片）\n'}程式計算的身體組成資料：\n${JSON.stringify(comparison)}` });
+  const text = await generate({ system: BODY_SYSTEM, parts, temperature: 0.3, maxOutputTokens: 2048 });
   return text.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim();
 }
 

@@ -325,6 +325,21 @@ function renderBodyUpload(box, sheet, addBox, onDone) {
   };
 }
 
+/** 身體組成儲存後：產生與上一次比較的分析，顯示在上傳區下方 */
+async function analyzeBody(date, box) {
+  const out = document.createElement('div');
+  out.className = 'card';
+  out.innerHTML = '<p class="muted">🤖 正在與上一次測量比較並產生分析…（約 20–40 秒）</p>';
+  box.appendChild(out);
+  try {
+    const { row } = await api('/reports/generate', { method: 'POST', body: { type: 'Body', date } });
+    out.innerHTML = `<div class="toolbar" style="margin-bottom:8px"><b>身體組成分析</b><a href="#reports" data-body-report>到報表中心查看全部</a></div><pre class="report">${esc(row.text)}</pre>`;
+    out.querySelector('[data-body-report]').onclick = () => { try { sessionStorage.setItem('rp-type', 'Body'); } catch { /* ignore */ } };
+  } catch (e) {
+    out.innerHTML = `<p class="muted">分析暫時無法產生：${esc(e.message)}。可稍後到報表中心按「產生／更新報告」。</p>`;
+  }
+}
+
 async function records() {
   const sheets = Object.keys(SHEET_VIEWS);
   let sheet = sessionStorage.getItem('rec-sheet') || 'Weight_Log';
@@ -341,11 +356,15 @@ async function records() {
     saveRange(from, to);
     const dateKey = SHEET_VIEWS[sheet].cols[0][0];
     const addBox = document.getElementById('r-add');
-    renderAddForm(addBox, sheet, { [dateKey]: me.today }, load);
-    renderBodyUpload(document.getElementById('r-upload'), sheet, addBox, load);
+    const afterAdd = async (row) => {
+      await load();
+      if (sheet === 'Body_Composition' && row?.measure_date) await analyzeBody(row.measure_date, document.getElementById('r-upload'));
+    };
+    renderAddForm(addBox, sheet, { [dateKey]: me.today }, afterAdd);
+    renderBodyUpload(document.getElementById('r-upload'), sheet, addBox, afterAdd);
     // 「複製」：把該筆資料帶入新增表單，修改後再按「新增」
     const onCopy = (row) => {
-      renderAddForm(addBox, sheet, row, load);
+      renderAddForm(addBox, sheet, row, afterAdd);
       addBox.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       addBox.querySelector('[data-k]')?.focus({ preventScroll: true });
       toast('已複製到「新增／補登」，修改後按「新增」');
@@ -438,14 +457,19 @@ async function tasks() {
 // ---------------------------------------------------------------------------
 
 async function reports() {
-  let type = 'Daily';
+  let type = sessionStorage.getItem('rp-type') || 'Body';
   $view.innerHTML = `
     <h2>報表中心</h2>
-    <div class="toolbar" id="rp-type">${[['Daily', '每日'], ['Weekly', '每週'], ['Monthly', '每月']].map(([k, v]) => `<button class="seg ${k === type ? 'on' : ''}" data-t="${k}">${v}報告</button>`).join('')}
+    <div class="toolbar" id="rp-type">${[['Body', '身體組成分析'], ['Daily', '每日報告'], ['Weekly', '每週報告'], ['Monthly', '每月報告']].map(([k, v]) => `<button class="seg ${k === type ? 'on' : ''}" data-t="${k}">${v}</button>`).join('')}
       <span style="margin-left:12px"></span><input type="date" id="rp-date" value="${me.today}"><button id="rp-gen" class="primary">產生／更新報告</button></div>
-    <p class="muted">每日 21:00、每週日 20:00、每月最後一天 20:00 自動產生並推播（時間可於作業排程調整）。數值由程式計算，Gemini 只撰寫解讀。</p>
+    <p class="muted" id="rp-note"></p>
     <div id="rp-list"></div>`;
+  const NOTES = {
+    Body: '每次儲存身體組成（LINE 確認或網頁新增）都會自動與上一次測量比較，並讀取兩次的原始照片；LINE 會直接收到分析。也可選日期後按「產生／更新報告」。',
+    other: '不會自動推播；需要時選日期後按「產生／更新報告」。',
+  };
   const load = async () => {
+    document.getElementById('rp-note').textContent = `${NOTES[type] || NOTES.other} 數值由程式計算，Gemini 只撰寫解讀。`;
     const { rows } = await api(`/reports?type=${type}`);
     document.getElementById('rp-list').innerHTML = rows.length ? rows.map((r) => `
       <div class="card"><div class="toolbar" style="margin-bottom:8px"><b>${md(r.start_date)}${r.start_date !== r.end_date ? ` ～ ${md(r.end_date)}` : ''}</b>
@@ -457,12 +481,13 @@ async function reports() {
     const b = e.target.closest('button[data-t]');
     if (!b) return;
     type = b.dataset.t;
+    try { sessionStorage.setItem('rp-type', type); } catch { /* ignore */ }
     document.querySelectorAll('#rp-type button[data-t]').forEach((x) => x.classList.toggle('on', x === b));
     load();
   };
   document.getElementById('rp-gen').onclick = async () => {
     try {
-      toast('產生中…');
+      toast(type === 'Body' ? '分析中…（約 20–40 秒）' : '產生中…');
       await api('/reports/generate', { method: 'POST', body: { type, date: document.getElementById('rp-date').value } });
       toast('報告已產生（未推播）');
       load();

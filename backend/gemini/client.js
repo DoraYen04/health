@@ -11,7 +11,8 @@ export async function generate({ system, parts, schema, temperature = 0.2, maxOu
   if (!config.gemini.apiKey) throw new Error('未設定 GEMINI_API_KEY');
   const body = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { temperature, maxOutputTokens },
+    // 新版 Gemini 的「思考」也算在輸出上限內，上限太小會讓回答被截斷；實際長度由提示詞控制
+    generationConfig: { temperature, maxOutputTokens: Math.max(maxOutputTokens, 8192) },
   };
   if (system) body.systemInstruction = { parts: [{ text: system }] };
   if (schema) {
