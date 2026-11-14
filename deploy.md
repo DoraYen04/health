@@ -31,7 +31,7 @@ Cloud Scheduler ──每 5 分鐘、OIDC──▶ Cloud Run /jobs/tick（提醒
 
 ## 一、主控台手動步驟（只需做一次）
 
-1. **Firebase 主控台** → 新增專案，例如 `health-dora`。記下**專案 ID**（主控台 → 專案設定；有時會自動加上後綴，例如 `health-dora-1a2b3`），下面的指令都要用它。
+1. **Firebase 主控台** → 新增專案（本專案：名稱 `dora-health`，**專案 ID `dora-health-6a02c`**）。建立時「Gemini in Firebase」與「Google Analytics」可關閉。
 2. **升級 Blaze 方案**（Firebase 主控台左下角）。
 3. **預算警示**：Google Cloud 主控台 → 帳單 → 預算與快訊 → 建立預算，金額例如 NT$100，門檻 50% / 90% / 100% 寄信通知。
 4. **Authentication** → 開始使用 → Sign-in method → 啟用 **Google**。
@@ -72,7 +72,7 @@ node --env-file=.env scripts/setup-sheets.js        # 印出 SPREADSHEET_ID、DR
 ### 0. 設定變數
 
 ```bash
-PROJECT=health-dora                  # ← 改成你的 Firebase 專案 ID
+PROJECT=dora-health-6a02c            # Firebase 專案 ID
 REGION=asia-east1
 SA_RUN=health-run@$PROJECT.iam.gserviceaccount.com
 SA_INVOKER=health-invoker@$PROJECT.iam.gserviceaccount.com
